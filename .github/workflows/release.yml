@@ -1,0 +1,41 @@
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: write
+
+jobs:
+  if_merged:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        ref: main
+        fetch-depth: 0
+    - name: define new tag
+      id: newtag
+      run: |
+        current_tag="$( git describe --abbrev=0 --tags)"
+        new_tag_name="$( echo $current_tag | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{if(length($NF+1)>length($NF))$(NF-1)++; $NF=sprintf("%0*d", length($NF), ($NF+1)%(10^length($NF))); print}')"
+        echo "is=$new_tag_name" >> $GITHUB_OUTPUT
+    - name: chech if such draft already exist
+      id: drafted
+      run: |
+        gh release list | grep  -q  "${{ steps.newtag.outputs.is }}" && echo "is=true" >> $GITHUB_OUTPUT  || echo "is=false" >> $GITHUB_OUTPUT
+    - name: push release  
+      if: steps.drafted.outputs.is == 'false'
+      run: |
+        gh release create -d  --generate-notes  "${{ steps.newtag.outputs.is }}" 
+    - name: push release  
+      if: steps.drafted.outputs.is == 'true'
+      run: |
+        gh release delete  "${{ steps.newtag.outputs.is }}"
+        sleep 1 
+        gh release create -d  --generate-notes  "${{ steps.newtag.outputs.is }}" 
+
